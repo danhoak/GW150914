@@ -11,6 +11,8 @@ import pylab
 from scipy import constants
 from scipy import signal
 
+
+# Example time-series filtering function (zero phase)
 def lowpass(x,fc,fs):
     nyq = fs/2
     b, a = signal.butter(4, fc/nyq, 'lowpass')
@@ -49,6 +51,7 @@ def data_condition(time_series, Fs, PSD, freq, lowpass=None, highpass=None):
 
 
 
+##### Plotting junk
 
 fig_width_pt = 600  # Get this from LaTeX using \showthe\columnwidth
 inches_per_pt = 1.0/72.27               # Convert pt to inch
@@ -65,15 +68,20 @@ matplotlib.rcParams.update({'savefig.dpi':250,
                             'font.serif':["Times"],
                             'xtick.major.pad':'8'})
 
+#####
 
-# Strain data
+
+
+
+
+# Grab the strain data from the txt file
 H1_ht = genfromtxt('H-H1_LOSC_16_V1-1126259446-32.txt')
 
-# these are defined in the header text of the datafile
+# these parameters are defined in the header text of the datafile
 t_start = 1126259446
 Fs = 16384.0
 
-# this you just have to know!
+# this you just have to know
 event_gps = 1126259462
 
 duration = len(H1_ht)/Fs
@@ -95,6 +103,7 @@ H1_PSD = median(H1_Pxx,1)/log(2)
 # generate the whitened time series
 H1_ht_whiten = data_condition(H1_ht, Fs, H1_PSD, freq, lowpass=300, highpass=35)
 
+# sanity check, PSD of whitened times series (should be flat)
 #H1_Pxx_w, freq, tH = specgram(H1_ht_whiten, NFFT=int(stride*Fs), Fs=int(Fs), noverlap=int(overlap*Fs))
 
 
