@@ -9,8 +9,6 @@ matplotlib.use("Agg")
 from matplotlib.mlab import *
 import pylab
 from scipy import constants
-from makewaveform import *
-from optimalSNR import *
 from scipy import signal
 
 def lowpass(x,fc,fs):
@@ -20,7 +18,7 @@ def lowpass(x,fc,fs):
     return y
 
 
-def data_condition(time_series, Fs, PSD, freq, lowpass=0, highpass=0):
+def data_condition(time_series, Fs, PSD, freq, lowpass=None, highpass=None):
 
     dt = (1./Fs)
     transform = dt * fft.rfft(time_series)
@@ -44,7 +42,7 @@ def data_condition(time_series, Fs, PSD, freq, lowpass=0, highpass=0):
         coefficients = where(frequencies_to_interpolate < highpass, 0.0, coefficients)
 
     # generate the whitened time series as the inverse Fourier transform of the freq-domain timeseries times the coefficients
-    whitened_time_series = real( 2.0 * df * fft.irfft(transform*coefficients) )
+    whitened_time_series = real( 2.0 * df * fft.irfft(transform*coefficients) ) 
 
     return whitened_time_series
 
@@ -69,56 +67,36 @@ matplotlib.rcParams.update({'savefig.dpi':250,
 
 
 # Strain data
-data = genfromtxt('GW150914_strain.txt')
-H1_ht = data[:,0]
-L1_ht = data[:,1]
+H1_ht = genfromtxt('H-H1_LOSC_16_V1-1126259446-32.txt')
 
-event_time = 1126259462.39
+# these are defined in the header text of the datafile
+t_start = 1126259446
+Fs = 16384.0
+
+# this you just have to know!
 event_gps = 1126259462
-offset = -0.0073
 
-duration = 256
-t_start = event_gps - duration/2
-Fs = 16384
+duration = len(H1_ht)/Fs
 
-t = arange(t_start,t_start+duration,1./Fs)
+# build a time vetor that has the event shortly after t=0
+t = arange(t_start,t_start+duration,1./Fs) - event_gps
 
-tidx = argmin(abs(t-event_gps))
-# seconds to plot around event
-sidx = 16384*3
-
-s1 = tidx-sidx/2
-s2 = tidx+sidx/2
-
-# indices for coherent combination
-tidx = argmin(abs(t-event_gps-offset))
-b1 = tidx-sidx/2
-b2 = tidx+sidx/2
-
-
-# get the H1, L1 PSDs for the full data segment with 1/6 Hz resolution
+# get the PSD for the full data segment with 1/6 Hz resolution
 
 # Define parameters for FFT
 stride = 6.0   # FFT stride in seconds
 overlap = 3.0  # overlap in seconds (50%)
 
 H1_Pxx, freq, tH = specgram(H1_ht, NFFT=int(stride*Fs), Fs=int(Fs), noverlap=int(overlap*Fs))
-L1_Pxx, freq, tL = specgram(L1_ht, NFFT=int(stride*Fs), Fs=int(Fs), noverlap=int(overlap*Fs))
 
+# calculate the median of the PSD
 H1_PSD = median(H1_Pxx,1)/log(2)
-L1_PSD = median(L1_Pxx,1)/log(2)
 
+# generate the whitened time series
 H1_ht_whiten = data_condition(H1_ht, Fs, H1_PSD, freq, lowpass=300, highpass=35)
-L1_ht_whiten = data_condition(L1_ht, Fs, L1_PSD, freq, lowpass=300, highpass=35)
 
-H1_Pxx_w, freq, tH = specgram(H1_ht_whiten, NFFT=int(stride*Fs), Fs=int(Fs), noverlap=int(overlap*Fs))
-H1_PSD_w = median(H1_Pxx_w,1)/log(2)
+#H1_Pxx_w, freq, tH = specgram(H1_ht_whiten, NFFT=int(stride*Fs), Fs=int(Fs), noverlap=int(overlap*Fs))
 
-L1_Pxx_w, freq, tL = specgram(L1_ht_whiten, NFFT=int(stride*Fs), Fs=int(Fs), noverlap=int(overlap*Fs))
-L1_PSD_w = median(L1_Pxx_w,1)/log(2)
-
-H1_ht_plot = H1_ht_whiten
-L1_ht_plot = -1*L1_ht_whiten
 
 
 
@@ -131,8 +109,7 @@ pylab.figure(fignum)
 
 ax1 = pylab.subplot(2,1,1)
 
-pylab.plot(t[s1:s2]-event_gps,H1_ht_plot[s1:s2],'r-',linewidth=0.8,label='H1 Data')
-pylab.plot(t[s1:s2]-event_gps-offset,L1_ht_plot[s1:s2],'b-',linewidth=0.8,label='L1 Data (shifted 7.3msec, inverted)')
+pylab.plot(t,H1_ht,'r-',linewidth=0.8,label='H1 Raw Data')
 
 pylab.grid(True, which='both', linestyle=':',alpha=0.8)
 pylab.xlim(0.2,0.55)
@@ -141,22 +118,23 @@ pylab.xticks(visible=False)
 pylab.legend(loc=3,fancybox=True,prop={'size':10})
 pylab.xticks(fontsize=10)
 pylab.yticks(fontsize=8)
-pylab.ylabel('Whitened Strain',fontsize=12)
-ax1.get_yaxis().set_label_coords(-0.10,0.5)
+pylab.ylabel('Strain',fontsize=12)
+ax1.get_yaxis().set_label_coords(-0.08,0.5)
 
 
 ax2 = pylab.subplot(2,1,2)
 
-pylab.plot(t[s1:s2]-event_gps,H1_ht_plot[s1:s2]+L1_ht_plot[b1:b2],'k-',linewidth=0.8,label='Coherent Data Sum')
+pylab.plot(t,H1_ht_whiten,'k-',linewidth=0.8,label='H1 Whitened Data')
 
 pylab.legend(loc=3,fancybox=True,prop={'size':10})
 pylab.grid(True, which='both', linestyle=':',alpha=0.8)
 pylab.xlim(0.2,0.55)
+pylab.ylim(-0.0015,0.0015)
 
 pylab.xticks(fontsize=10)
 pylab.yticks(fontsize=8)
 pylab.ylabel('Whitened Strain',fontsize=12)
-ax2.get_yaxis().set_label_coords(-0.10,0.5)
+ax2.get_yaxis().set_label_coords(-0.08,0.5)
 
 pylab.xlabel('Time [sec] from GPS=' + str(event_gps),fontsize=12)
 
