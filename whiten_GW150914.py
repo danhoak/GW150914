@@ -19,11 +19,12 @@ def lowpass(x,fc,fs):
     y = signal.filtfilt(b, a, x)
     return y
 
-
+# The normalization for the ffts here is all wonky
 def data_condition(time_series, Fs, PSD, freq, lowpass=None, highpass=None):
 
+    # FFT the data - normalize by the sampling rate
     dt = (1./Fs)
-    transform = dt * fft.rfft(time_series)
+    transform = fft.rfft(time_series)/sqrt(dt)
     transform_len = len(transform)
     df = 1./(dt*len(transform))
     
@@ -33,7 +34,8 @@ def data_condition(time_series, Fs, PSD, freq, lowpass=None, highpass=None):
 
     # get the coefficients to whiten the FFT of the timeseries
     # these are the inverse of the sqrt of the interpolated PSD
-    coefficients = sqrt((2.0)/interpolated_PSD)
+    # not sure why the factor of sqrt(2) is necessary, the PSD should already account for positive frequencies?
+    coefficients = 1/sqrt(2*interpolated_PSD)
 
     if lowpass:
         # Replace all bins with frequencies greater than lowpass cutoff with zeros
@@ -44,7 +46,8 @@ def data_condition(time_series, Fs, PSD, freq, lowpass=None, highpass=None):
         coefficients = where(frequencies_to_interpolate < highpass, 0.0, coefficients)
 
     # generate the whitened time series as the inverse Fourier transform of the freq-domain timeseries times the coefficients
-    whitened_time_series = real( 2.0 * df * fft.irfft(transform*coefficients) ) 
+    #whitened_time_series = real( fft.irfft(transform*coefficients) )
+    whitened_time_series = fft.irfft(transform*coefficients)/sqrt(dt) / len(time_series)
 
     return whitened_time_series
 
@@ -90,6 +93,7 @@ duration = len(H1_ht)/Fs
 t = arange(t_start,t_start+duration,1./Fs) - event_gps
 
 # get the PSD for the full data segment with 1/6 Hz resolution
+# use median estimation to be robust to glitches
 
 # Define parameters for FFT
 stride = 6.0   # FFT stride in seconds
@@ -97,11 +101,12 @@ overlap = 3.0  # overlap in seconds (50%)
 
 H1_Pxx, freq, tH = specgram(H1_ht, NFFT=int(stride*Fs), Fs=int(Fs), noverlap=int(overlap*Fs))
 
-# calculate the median of the PSD
+# calculate the median of the PSD and correct for the bias of the median relative to the RMS average
 H1_PSD = median(H1_Pxx,1)/log(2)
 
 # generate the whitened time series
-H1_ht_whiten = data_condition(H1_ht, Fs, H1_PSD, freq, lowpass=300, highpass=35)
+# note the normalization - this is included in numpy v1.10
+H1_ht_whiten = data_condition(H1_ht, Fs, H1_PSD, freq, lowpass=300, highpass=20)
 
 # sanity check, PSD of whitened times series (should be flat)
 #H1_Pxx_w, freq, tH = specgram(H1_ht_whiten, NFFT=int(stride*Fs), Fs=int(Fs), noverlap=int(overlap*Fs))
@@ -128,7 +133,7 @@ pylab.legend(loc=3,fancybox=True,prop={'size':10})
 pylab.xticks(fontsize=10)
 pylab.yticks(fontsize=8)
 pylab.ylabel('Strain',fontsize=12)
-ax1.get_yaxis().set_label_coords(-0.08,0.5)
+ax1.get_yaxis().set_label_coords(-0.04,0.5)  # this command offsets the y-axis label by a defined amount so it's the same for both plots
 
 
 ax2 = pylab.subplot(2,1,2)
@@ -138,12 +143,12 @@ pylab.plot(t,H1_ht_whiten,'k-',linewidth=0.8,label='H1 Whitened Data')
 pylab.legend(loc=3,fancybox=True,prop={'size':10})
 pylab.grid(True, which='both', linestyle=':',alpha=0.8)
 pylab.xlim(0.2,0.55)
-pylab.ylim(-0.0015,0.0015)
+pylab.ylim(-4,4)
 
 pylab.xticks(fontsize=10)
 pylab.yticks(fontsize=8)
 pylab.ylabel('Whitened Strain',fontsize=12)
-ax2.get_yaxis().set_label_coords(-0.08,0.5)
+ax2.get_yaxis().set_label_coords(-0.04,0.5)
 
 pylab.xlabel('Time [sec] from GPS=' + str(event_gps),fontsize=12)
 
